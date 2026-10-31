@@ -14,10 +14,10 @@ class Value;
 namespace Penumbra::Render {
 
 // One entry per TouchControl, in its order; TouchControls.cpp static_asserts the count and a test the names.
-inline constexpr int kTuningControls = 10;
-inline constexpr int kTuningBackIndex = 9;
+inline constexpr int kTuningControls = 11;
+inline constexpr int kTuningBackIndex = 10;
 inline constexpr const char* kTuningControlKeys[kTuningControls] = {
-    "dpad", "jump", "sword", "fire", "light", "swordCombo", "spellCombo", "exitDown", "pause", "back"};
+    "left", "right", "down", "jump", "sword", "fire", "light", "swordCombo", "spellCombo", "pause", "back"};
 
 // How far a control is moved from where the manifest puts it: manifest pixels, SCREEN direction (+x right, +y down).
 struct TouchMove {
@@ -45,11 +45,13 @@ struct TouchTuning {
     // E34), keeping the size and the opacity, which do not depend on the arrangement. The numbers: 1 is E29's
     // arrangement (two columns, the right one higher), 2 is E32's (a level grid, 117 in from the edge), 3 is an
     // intermediate build of E33 (two staggered columns 40 in from the edge, the LEFT one the higher), which was
-    // never in a release, and 4 is E33's (the same columns with the RIGHT one the higher). WHOEVER CHANGES ANY OF
-    // THE SIX ACTION BUTTONS' DEFAULT OFFSETS (or the direction control's, the down button's or the pause button's)
+    // never in a release, and 4 is E33's (the same columns with the RIGHT one the higher), and 5 replaces the direction
+    // control with three buttons of their own, left, right and down (so the saved moves, keyed by control, no longer
+    // fit). WHOEVER CHANGES ANY OF
+    // THE SIX ACTION BUTTONS' DEFAULT OFFSETS (or the left, right or down button's, or the pause button's)
     // BUMPS THIS BY ONE; tests/test_pn_render_touch.cpp pins the value beside the table of the default places
     // (testTuningIdentity).
-    static constexpr int kLayoutVersion = 4;
+    static constexpr int kLayoutVersion = 5;
 
     float size = 1.0f;                            // every control but Pause and Back
     float opacity = 1.0f;                         // times the manifest's idleAlpha (held: see WithTuning)
@@ -64,7 +66,7 @@ struct TouchTuning {
     static float SnapOpacity(float value);        // clamp 0.2..1.8, round(x*5)/5
     static float StepSize(float current, int direction);      // SnapSize(current + direction*0.1); `current` itself at a limit
     static float StepOpacity(float current, int direction);   // likewise, 0.2 steps
-    static bool IsMovableIndex(int index);        // 0..8 (everything but back)
+    static bool IsMovableIndex(int index);        // 0..9 (everything but back)
     static const char* ControlKey(int index);     // kTuningControlKeys[index], "" out of range
 
     // The settings.json block, `block` = root["touchTuning"]. `out` starts as the caller's default; every wrong

@@ -8,11 +8,13 @@
 // Eth::InputFrame InputMapper builds, before the pause and the game read it -
 // so the ported scripts read the original's keys and change nothing:
 //
-//   direction control   K_LEFT, K_RIGHT           held: walking reads KeyDown
+//   left button         K_LEFT                    held: walking reads KeyDown
 //                                                 (getPlayerXYAxis), combos and
 //                                                 the menus' edges read KS_HIT
-//   down (E25)          K_DOWN                    held at the next_level door
-//                                                 (main.as:208), shown only there
+//   right button        K_RIGHT                   held, as the left button
+//   down button         K_DOWN                    held at the next_level door
+//                                                 (main.as:208), first in the spell
+//                                                 combo; always shown
 //   jump                K_CTRL                    KS_HIT (getJumpButtonStatus)
 //   sword               K_S                       KS_HIT (getAttack01ButtonStatus)
 //   fire                K_D                       KS_HIT (getAttack02ButtonStatus)
@@ -25,45 +27,35 @@
 // the menus (detectJoysticks, menu.as:74) and could make hasASecondController()
 // true (playerInput.as:159). K_CTRL and not K_UP for the jump: K_UP is also
 // the combos' CMD_UP and the pause's Up, and a pad's stick-up does not jump
-// either (JK_03 does). There is no up on the direction control: nothing in
-// play needs it (up only jumps, and the jump has its own button). Down is
-// needed at the next_level door (main.as:208) and first in the spell combo
+// either (JK_03 does). There is no up button: nothing in play needs it (up
+// only jumps, and the jump has its own button). Down is needed at the
+// next_level door (main.as:208) and first in the spell combo
 // (playerInput.as:380), which its combo button makes in one tap. Every action
 // fires on its KS_HIT and none repeats while held, so a button is simply held
 // while a finger is on it.
 //
-// THE DIRECTION CONTROL is one round control the thumb slides on without
-// lifting: left and right by which side of the centre it is, nothing in the
-// dead zone at the centre or within 22.5 degrees of straight up or down. It is
-// drawn as two buttons, left and right, each where its sector is
-// (tools/art/make_mr_touch_art.py checks the art against these sectors).
-// Before E25 it had a down arrow below them and a down sector - down within
-// 67.5 degrees of straight down, straight down being down alone, so a thumb
-// held at the door did not walk off it - which a manifest can still ask for
-// (dpad "downSector": true and its "down" arrow, as the placeholder look's has).
-// Its two buttons are drawn above the disc's centre and its lower half is empty,
-// so the shipped layout lets the box hang below the screen's bottom edge
-// (overhang, below): the buttons then sit at the thumb's resting height, 25 units
-// under the mean of the action buttons' bottom-row centres (E32, E33: the sword button
-// and the jump button are 30 apart in height), with the disc's input unchanged.
-//
-// THE DOWN BUTTON (ENHANCEMENT E25) is K_DOWN alone, above the left and right
-// buttons and centred between them, shown only while the next_level door
-// offers player 1 the way on (TouchInput::nextLevelOffered, the scripts'
-// Script::g_nextLevelOffered): the one place in play where down alone does
-// anything. It hides as the door's fade starts, and a finger on it is dead
-// from then on, as on any control that hides under it.
+// THE LEFT, RIGHT AND DOWN BUTTONS (the direction control is gone: it was one
+// round control with left and right as sectors of it, and a thumb sliding
+// between them pressed one through the other). Each is a button like the
+// action buttons: a finger that lands on it holds its own key, and nothing
+// else, for as long as it stays down; sliding off keeps it held, sliding onto
+// another presses nothing. They do not depend on one another: left and right
+// may be held by two fingers at once (the game reads K_LEFT and K_RIGHT as it
+// reads a keyboard that has both down), and down may be held with either. They
+// sit at the left thumb, left and right side by side with down centred above
+// them, and are always shown in play. While a combo runs they are held back as
+// the old direction control was (their presses would land in the combo buffer),
+// and a finger held on one presses again as soon as the combo ends.
 //
 // FINGERS. A contact belongs to what it first landed on, until it lifts:
 // sliding off a button keeps it held, sliding onto one presses nothing, and a
 // contact that lands on no control does nothing in play. Two fingers on one
-// button hold it once (one KS_HIT); a second finger on the direction control
-// is ignored. A contact whose control is hidden under it - the pause opens,
+// button hold it once (one KS_HIT). A contact whose control is hidden under it - the pause opens,
 // a death loads game over - is dead until it lifts: it neither keeps its key
 // down nor turns into a click.
 //
 // MENUS (TouchScene::Menu: the menus, the options, game over, and the pause's
-// rows). The direction control and the action buttons are hidden, and a
+// rows). The left, right and down buttons and the action buttons are hidden, and a
 // finger on no control is the mouse: the cursor goes where it is and the left
 // button is held while it stays - cursor and click in the same tick, which
 // every reader of the cursor (the menu's cursor.ent, Switch, the video modes,
@@ -73,20 +65,20 @@
 // Android the first finger of a gesture holds the left button and moves the
 // pointer - so while any finger is down the left button is the touch
 // controls' to say: a finger on a button never clicks under it, and a thumb
-// resting on the direction control does not hold the button down through a
+// resting on a direction button does not hold the button down through a
 // second finger's tap. With no finger down the real mouse is left as it is.
 //
 // COMBOS. Two buttons play the original's combos (playerInput.as:358-395),
-// which a thumb on a disc can hardly make: a tap runs a short macro of player
+// which a thumb on three buttons can hardly make: a tap runs a short macro of player
 // 1's keys, one press a tick, the side being the way the wizard faces
-// (TouchInput::facing, his currentDir; else the side the disc was last pushed;
+// (TouchInput::facing, his currentDir; else the side last pressed;
 // else right, as a currentDir never written reads):
 //
 //   sword combo   tick 0 -, 1 side, 2 -, 3 side, 4 K_S    CMD side, side, SWORD
 //   spell combo   tick 0 -, 1 K_DOWN, 2 side, 3 K_D       CMD DOWN, side, SPELL
 //
 // Tick 0 lets go of every key the combos read, so the first press is a fresh
-// KS_HIT whatever the disc held. The two presses of the same side need the
+// KS_HIT whatever was held. The two presses of the same side need the
 // release between them; a different key's KS_HIT is recorded while the last
 // one is still releasing (combo.as records the first HIT of a frame). THE
 // BUFFER MUST BE EMPTY for checkSequence, which matches only the first three
@@ -96,10 +88,10 @@
 // press waits until the game has run kComboQuietTicks ticks in a row in which
 // nothing the combos read was newly pressed, by any device (ObserveFrame): at
 // once when nothing was pressed for a while, 14 ticks after a step. While a combo
-// runs, the disc's directions and the sword and fire buttons are held back
+// runs, the left, right and down buttons and the sword and fire buttons are held back
 // (their presses would land in the buffer), jump, light and pause are not; a
 // sword or fire finger held through a combo stays held back until it lifts
-// (it would swing again), the disc steers again at once. A second tap on
+// (it would swing again), the direction buttons steer again at once. A second tap on
 // either combo button is ignored until the combo ends; leaving play (the
 // pause, a menu) or a scene load (TouchInput::sceneSerial) cancels it, and
 // its keys are simply not pressed any more.
@@ -160,7 +152,7 @@
 // ENHANCEMENT E28: THE PLAYER'S OWN LAYOUT. settings.json's "touchTuning"
 // (render/TouchTuning.hpp) is a size, an opacity and a move for each control,
 // laid over the manifest by WithTuning: ONE derived manifest, so that the layout,
-// the hit tests, the knob and the art all read one thing, and the default tuning
+// the hit tests and the art all read one thing, and the default tuning
 // is the manifest exactly. The final size of a control is scale x tuning size x
 // its own size; the Pause and Back keep theirs (the pause column feeds the
 // message room, the zoom's limit and the phone menu's panel). A move is in the
@@ -217,7 +209,7 @@ struct TouchInsets {
 };
 
 enum class TouchScene {
-    Play,   // a level or an arena: the direction control and the action buttons
+    Play,   // a level or an arena: the left, right and down buttons and the action buttons
     Menu,   // the menus, the options, game over and the pause: a finger is the mouse
     Edit,   // E28's editor: every control but Back is shown, no finger presses anything, no pointer   // E28
 };
@@ -253,7 +245,8 @@ struct TouchInput {
     // (1 / its zoom) and a phone's larger menu (its E1 scale over its own).
     float unit = 1.0f;
     // E25: the next_level door offers player 1 the way on (the last frame's
-    // Script::g_nextLevelOffered): the down button shows.
+    // Script::g_nextLevelOffered). The down button is always shown now, so
+    // nothing here reads it; the layer still fills it in.
     bool nextLevelOffered = false;
     // E1's wide menus: the logical rectangle the controls are laid out in,
     // when the view shows past the screen's left and right edges
@@ -314,17 +307,19 @@ struct TouchStep {
     bool Denied(const TouchCombo button) const { return button != TouchCombo::None && comboDenied[TouchComboSlot(button)]; }   // E37
 };
 
-// What is drawn and touched; the manifest's ids, in drawing order. ExitDown is
-// E25's down button.
+// What is drawn and touched; the manifest's ids, in drawing order. Left, Right
+// and Down replace the old direction control (Dpad) and E25's down button
+// (ExitDown): three buttons of their own.
 enum class TouchControl : int {
-    Dpad = 0,
+    Left = 0,
+    Right,
+    Down,
     Jump,
     Sword,
     Fire,
     Light,
     SwordCombo,
     SpellCombo,
-    ExitDown,
     Pause,
     Back,
     Count
@@ -341,9 +336,8 @@ struct TouchControlSpec {
     glm::vec2 offset{0.0f};         // from the anchor corner to the control's nearest edges, inward
     // How far the box may lie past the edges of the safe area it is anchored
     // to (a bottom-left control: past the left and the bottom), in the
-    // manifest's pixels; the offset may be negative down to minus this. The
-    // direction control's lower half is empty, and hangs there. At most half
-    // the control's size is allowed, whatever is written.
+    // manifest's pixels; the offset may be negative down to minus this. At most
+    // half the control's size is allowed, whatever is written.
     glm::vec2 overhang{0.0f};
     glm::vec2 size{100.0f};
     TouchShape shape = TouchShape::Circle;
@@ -354,24 +348,6 @@ struct TouchControlSpec {
 
 struct TouchManifest {
     std::array<TouchControlSpec, kTouchControlCount> controls{};
-    // The direction control's arrows, each drawn over its image (the same box)
-    // and brightened while its direction is held, and the knob that follows
-    // the thumb. Any may be "" (not drawn): E25's layout has no down arrow.
-    std::string dpadLeft;
-    std::string dpadRight;
-    std::string dpadDown;
-    std::string knobImage;
-    glm::vec2 knobSize{0.0f};
-    // The knob with no thumb pointing a direction: at the control's centre
-    // (true, the placeholder's disc and its knob) or not drawn (false, the
-    // shipped look: Magic Rampage's brackets there frame the empty gap
-    // between the left and right buttons, which reads as a missing button).
-    bool knobAtRest = true;
-    float deadZone = 0.25f;         // of the direction control's radius: the thumb there means nothing
-    // Whether the direction control presses down too (below it, within 67.5
-    // degrees of straight down): E16's disc. E25's has left and right only,
-    // and its down button (TouchControl::ExitDown) instead.
-    bool downSector = false;
     float idleAlpha = 0.45f;        // what a control is drawn at, 0..1
     float pressedAlpha = 0.9f;      // and while it is held
     float scale = 1.0f;             // every size, offset and padding
@@ -402,8 +378,8 @@ public:
     // The manifest, in the data folder (eth/Paths.hpp's data root).
     static constexpr const char* kManifestFile = "touch_controls.json";
 
-    // "dpad", "jump", "sword", "fire", "light", "swordCombo", "spellCombo",
-    // "exitDown", "pause", "back".
+    // "left", "right", "down", "jump", "sword", "fire", "light", "swordCombo",
+    // "spellCombo", "pause", "back".
     static const char* ControlId(TouchControl control);
     // E25: the height of the run's timer row at the screen's top (setupScene.as:337,
     // its 25 px text), which a control hanging from the top keeps below.
@@ -472,8 +448,8 @@ public:
     // the Pause in a zoomed level, where E25's timer rule steps at 25 px from the top; the Pause's floor keeps it clear.   // E28
     static TouchMove MoveFor(const TouchManifest& base, const TouchTuning& tuning, TouchControl control,          // E28
                              const glm::vec2& wantedMin, const TouchGeometry& geometry);                          // E28
-    // What a finger can grab in the editor: the box, but for the Dpad the strip its two buttons occupy            // E28
-    // (y from 0.2883 to 0.6033 of the box, the art's 126-unit buttons centred 21.7 above the box's centre), not its 400-unit disc.   // E28
+    // What a finger can grab in the editor: the control's box. (It was the strip of the old direction control's two            // E28
+    // buttons; every control is a plain button now, so it is the box for all.)                                                   // E28
     static TouchLayout::Box GrabBox(TouchControl control, const TouchLayout::Box& box);                           // E28
 
     // Applies `tuning` (Clamped) now: m_manifest = WithTuning(m_base, tuning), and the layout of the last Update is   // E28
@@ -538,12 +514,12 @@ public:
     const TouchLayout& Layout() const { return m_layout; }
 
 private:
-    enum class Owner { None, Dpad, Jump, Sword, Fire, Light, SwordCombo, SpellCombo, ExitDown, Corner, Pointer };
+    enum class Owner { None, Left, Right, Down, Jump, Sword, Fire, Light, SwordCombo, SpellCombo, Corner, Pointer };
 
     struct Held {
         Owner owner = Owner::None;
         glm::vec2 position{0.0f};
-        bool heldBack = false;   // a sword or fire finger a combo ran under: nothing until it lifts
+        bool heldBack = false;   // a sword or fire finger a combo ran under: nothing until it lifts (left, right and down resume at once)
     };
 
     struct Combo {
@@ -583,15 +559,9 @@ private:
     std::map<int, Held> m_contacts;          // every finger down, by id
     std::map<int, glm::vec2> m_latched;      // down in a frame no tick saw
     TouchStep m_last;
-    glm::vec2 m_knob{0.0f};                  // where the knob is drawn (the thumb, within the disc)
-    bool m_dpadHeld = false;
-    // The thumb on the direction control points a direction: past the dead
-    // zone and not straight up. By where it is, not by what is held, which a
-    // combo holds back or presses with no thumb there.
-    bool m_dpadPointing = false;
 
     Combo m_combo;
-    TouchAction m_lastSide = TouchAction::Right;   // the disc's last left or right
+    TouchAction m_lastSide = TouchAction::Right;   // the last left or right button held
     unsigned m_sceneSerial = 0;
     // ObserveFrame: what the combos read that was down, and for how many run
     // ticks in a row nothing of it was newly pressed. Quiet until told.

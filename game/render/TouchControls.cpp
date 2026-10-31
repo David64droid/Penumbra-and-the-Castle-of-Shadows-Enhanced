@@ -20,14 +20,14 @@ namespace {
 using Supersonic::Json::Value;
 
 // In TouchControl's order.
-constexpr const char* kControlIds[kTouchControlCount] = {"dpad",       "jump",       "sword",    "fire",  "light",
-                                                         "swordCombo", "spellCombo", "exitDown", "pause", "back"};
+constexpr const char* kControlIds[kTouchControlCount] = {"left",  "right",      "down",       "jump",  "sword", "fire",
+                                                         "light", "swordCombo", "spellCombo", "pause", "back"};
 
 // What each action presses: what playerInput.as reads for player 0.
 constexpr Eth::KEY kActionKeys[kTouchActionCount] = {
     Eth::K_LEFT,    // getLeftButtonStatus, getPlayerXYAxis (playerInput.as:55, :135)
     Eth::K_RIGHT,   // getRightButtonStatus (playerInput.as:75)
-    Eth::K_DOWN,    // getDownButtonStatus (playerInput.as:115): combos, the next_level door (E25's button)
+    Eth::K_DOWN,    // getDownButtonStatus (playerInput.as:115): combos, the next_level door (the down button)
     Eth::K_CTRL,    // getJumpButtonStatus (playerInput.as:176)
     Eth::K_S,       // getAttack01ButtonStatus, the sword (playerInput.as:201)
     Eth::K_D,       // getAttack02ButtonStatus, the fire ball (playerInput.as:221)
@@ -108,12 +108,8 @@ TouchControlSpec Spec(const char* image, TouchAnchor anchor, glm::vec2 offset, g
     return spec;
 }
 
-// tan(22.5 degrees): the edge between a direction and its diagonals.
-constexpr float kTan22 = 0.41421356f;
-
 constexpr float kMinScale = 0.25f;
 constexpr float kMaxScale = 4.0f;
-constexpr float kMaxDeadZone = 0.95f;
 // A missing image is drawn as a square this grey, at the control's alpha.
 constexpr Eth::uint8 kPlainGrey = 90;
 
@@ -292,19 +288,22 @@ Eth::KEY TouchControls::KeyFor(TouchAction action) {
 TouchManifest TouchControls::DefaultManifest() {
     // game/data/touch_controls.json holds the same; see it for why each is where it is. The art is
     // Magic Rampage's screen pad (tools/art/make_mr_touch_art.py): square buttons, so they are
-    // touched as squares - all but the direction control, one round control whose two buttons
-    // are drawn where its sectors are.
+    // touched as squares.
     TouchManifest m;
     constexpr glm::vec2 kButton{120.0f, 120.0f};
     constexpr glm::vec2 kComboButton{100.0f, 100.0f};
     constexpr TouchShape kSquare = TouchShape::Rect;
-    // The disc's two buttons are drawn 21.7 above its centre and its lower half is empty, so the
-    // box hangs 138 below the screen's bottom edge: the buttons' centres are then 200 - 138 + 21.7
-    // = 83.7 above it, 25 under the mean of the action buttons' bottom-row centres (the sword button's
-    // 34 + 60 = 94 and the jump button's 64 + 60 = 124: 109). overhang is the allowance for that.   // E33
-    // The box is 400 across (the art's 406 px): each button 126 units, a face of about 118.
-    m[TouchControl::Dpad] = Spec("images/touch/dpad.png", TouchAnchor::BottomLeft, {24.0f, -138.0f}, {400.0f, 400.0f},
-                                 TouchShape::Circle, 30.0f, {0.0f, 150.0f});
+    // The left, right and down buttons (they replace the old direction control): the same 120 units as
+    // the action buttons, under the left thumb. Left and right sit side by side with the same 16 between
+    // them as the action buttons have, at the height of the mean of the action buttons' bottom-row
+    // offsets (the sword button's 34 and the jump button's 64: 49); down is centred above them, 16
+    // clear of their tops. Changing any of these offsets means bumping TouchTuning::kLayoutVersion.
+    m[TouchControl::Left] =
+        Spec("images/touch/left.png", TouchAnchor::BottomLeft, {40.0f, 49.0f}, kButton, kSquare, 4.0f);
+    m[TouchControl::Right] =
+        Spec("images/touch/right.png", TouchAnchor::BottomLeft, {176.0f, 49.0f}, kButton, kSquare, 4.0f);
+    m[TouchControl::Down] =
+        Spec("images/touch/down.png", TouchAnchor::BottomLeft, {108.0f, 185.0f}, kButton, kSquare, 4.0f);
     // E33: the six actions are two staggered columns of three under the right thumb. Every pair of
     // neighbours is 16 apart, the columns and the buttons in a column alike (E32 had 67 between the
     // columns and 26 between rows, E29 16), and the right column is only 40 in from the screen's right
@@ -328,24 +327,11 @@ TouchManifest TouchControls::DefaultManifest() {
         Spec("images/touch/combo_sword.png", TouchAnchor::BottomRight, {186.0f, 170.0f}, kComboButton, kSquare, 6.0f);   // E33
     m[TouchControl::SpellCombo] =
         Spec("images/touch/combo_spell.png", TouchAnchor::BottomRight, {50.0f, 200.0f}, kComboButton, kSquare, 6.0f);   // E33
-    // E25's down button: the arrows' size, centred over the gap between the left and right buttons
-    // (the disc's centre, 24 + 200 across) and about 17 px above their faces (the disc's centre,
-    // 768 + 138 - 200 = 706, less 21.7 to theirs, less 59): x 161-287, y 482-608.
-    m[TouchControl::ExitDown] =
-        Spec("images/touch/exit_down.png", TouchAnchor::BottomLeft, {161.0f, 160.0f}, {126.0f, 126.0f}, kSquare, 6.0f);
     // Magic Rampage's pause is a pill, 128x86.
     m[TouchControl::Pause] =
         Spec("images/touch/pause.png", TouchAnchor::TopRight, {20.0f, 44.0f}, {96.0f, 64.5f}, kSquare, 12.0f);
     m[TouchControl::Back] =
         Spec("images/touch/back.png", TouchAnchor::TopRight, {20.0f, 44.0f}, {96.0f, 96.0f}, kSquare, 12.0f);
-    m.dpadLeft = "images/touch/dpad_left.png";
-    m.dpadRight = "images/touch/dpad_right.png";
-    m.dpadDown.clear();   // E25: no down arrow on the disc, and no down sector
-    m.downSector = false;
-    m.knobImage = "images/touch/dpad_knob.png";
-    m.knobSize = {128.0f, 128.0f};   // the art's own size: the brackets just frame a 126 px button
-    m.knobAtRest = false;   // the brackets only on the button the thumb holds
-    m.deadZone = 0.25f;
     m.idleAlpha = 0.45f;
     m.pressedAlpha = 0.9f;
     m.scale = 1.0f;
@@ -403,36 +389,6 @@ TouchManifest TouchControls::ManifestFromJson(const std::string& text, std::stri
         if (entry.Has("enabled")) {
             if (entry["enabled"].IsBool()) spec.enabled = entry["enabled"].AsBool();
             else Warn(warning, where + ".enabled is not true/false");
-        }
-
-        if (static_cast<TouchControl>(i) != TouchControl::Dpad) continue;
-        ReadFloat(entry, "deadZone", where, 0.0f, kMaxDeadZone, manifest.deadZone, warning);
-        if (entry.Has("downSector")) {
-            if (entry["downSector"].IsBool()) manifest.downSector = entry["downSector"].AsBool();
-            else Warn(warning, where + ".downSector is not true/false");
-        }
-        if (entry.Has("arrows")) {
-            const Value& arrows = entry["arrows"];
-            if (arrows.IsObject()) {
-                ReadString(arrows, "left", where + ".arrows", manifest.dpadLeft, warning);
-                ReadString(arrows, "right", where + ".arrows", manifest.dpadRight, warning);
-                ReadString(arrows, "down", where + ".arrows", manifest.dpadDown, warning);
-            } else {
-                Warn(warning, where + ".arrows is not an object");
-            }
-        }
-        if (entry.Has("knob")) {
-            const Value& knob = entry["knob"];
-            if (knob.IsObject()) {
-                ReadString(knob, "image", where + ".knob", manifest.knobImage, warning);
-                ReadPair(knob, "size", where + ".knob", glm::vec2(1.0f), manifest.knobSize, warning);
-                if (knob.Has("atRest")) {
-                    if (knob["atRest"].IsBool()) manifest.knobAtRest = knob["atRest"].AsBool();
-                    else Warn(warning, where + ".knob.atRest is not true/false");
-                }
-            } else {
-                Warn(warning, where + ".knob is not an object");
-            }
         }
     }
     return manifest;
@@ -626,8 +582,7 @@ void TouchControls::SetImageRoot(const std::filesystem::path& dataDir) {
     m_images.clear();
     m_comboArtSize.fill(glm::ivec2(0));   // E37
     if (m_imageRoot.empty()) return;
-    std::vector<std::string> names = {m_manifest.dpadLeft, m_manifest.dpadRight, m_manifest.dpadDown,
-                                      m_manifest.knobImage};
+    std::vector<std::string> names;
     for (const TouchControlSpec& spec : m_manifest.controls) names.push_back(spec.image);
     for (const std::string& name : names) {
         if (name.empty() || m_images.count(name) != 0) continue;
@@ -653,14 +608,15 @@ std::string TouchControls::resolved(const std::string& image) const {
 bool TouchControls::ownerVisible(Owner owner) const {
     switch (owner) {
         case Owner::None: return true;
-        case Owner::Dpad: return Visible(TouchControl::Dpad);
+        case Owner::Left: return Visible(TouchControl::Left);
+        case Owner::Right: return Visible(TouchControl::Right);
+        case Owner::Down: return Visible(TouchControl::Down);
         case Owner::Jump: return Visible(TouchControl::Jump);
         case Owner::Sword: return Visible(TouchControl::Sword);
         case Owner::Fire: return Visible(TouchControl::Fire);
         case Owner::Light: return Visible(TouchControl::Light);
         case Owner::SwordCombo: return Visible(TouchControl::SwordCombo);
         case Owner::SpellCombo: return Visible(TouchControl::SpellCombo);
-        case Owner::ExitDown: return Visible(TouchControl::ExitDown);
         case Owner::Corner: return Visible(TouchControl::Pause) || Visible(TouchControl::Back);
         case Owner::Pointer: return m_scene == TouchScene::Menu;
     }
@@ -779,12 +735,11 @@ TouchStep TouchControls::Update(const TouchInput& input) {
     const auto show = [this](TouchControl control, bool shown) {
         m_visible[static_cast<std::size_t>(control)] = shown && m_manifest[control].enabled;
     };
-    for (const TouchControl control : {TouchControl::Dpad, TouchControl::Jump, TouchControl::Sword, TouchControl::Fire,
-                                       TouchControl::Light, TouchControl::SwordCombo, TouchControl::SpellCombo}) {
+    for (const TouchControl control : {TouchControl::Left, TouchControl::Right, TouchControl::Down, TouchControl::Jump,
+                                       TouchControl::Sword, TouchControl::Fire, TouchControl::Light,
+                                       TouchControl::SwordCombo, TouchControl::SpellCombo}) {
         show(control, play || edit);   // E28: the editor shows every control that moves
     }
-    // E25: down, only where it takes the wizard on.
-    show(TouchControl::ExitDown, edit || (play && input.nextLevelOffered));   // E28
     show(TouchControl::Pause, edit || m_corner == TouchCorner::Pause);   // E28: whatever CornerFor said
     show(TouchControl::Back, !edit && m_corner == TouchCorner::Back);   // E28: Back never moves, so never shown there
 
@@ -826,14 +781,12 @@ TouchStep TouchControls::Update(const TouchInput& input) {
         else it = m_contacts.erase(it);
     }
     // Hidden under the finger: dead until it lifts, never a key and never a click.
-    bool dpadTaken = false;
     bool pointerTaken = false;
     for (auto& entry : m_contacts) {
         Held& held = entry.second;
         // E28: in the editor nothing a finger does presses a key, so a finger a level or a menu gave an owner
         // (the pause's, the direction control's) lets go of it too; it keeps none after the editor closes.
         if (edit || !ownerVisible(held.owner)) held.owner = Owner::None;   // E28
-        dpadTaken = dpadTaken || held.owner == Owner::Dpad;
         pointerTaken = pointerTaken || held.owner == Owner::Pointer;
     }
 
@@ -864,13 +817,11 @@ TouchStep TouchControls::Update(const TouchInput& input) {
         // E28: in the editor every new finger lands on no control (an owner of None: dead until it lifts, never a
         // key or a click, in this scene or the next), whatever is under it.
         switch (edit ? TouchControl::Count : hit(contact.position)) {   // E28
-            case TouchControl::Dpad:
-                // One thumb steers; a second finger on it is ignored.
-                if (!dpadTaken) {
-                    held.owner = Owner::Dpad;
-                    dpadTaken = true;
-                }
-                break;
+            // Each direction button is its own: a finger on one holds that key and no other, and a second
+            // finger on the same button holds it once.
+            case TouchControl::Left: held.owner = Owner::Left; break;
+            case TouchControl::Right: held.owner = Owner::Right; break;
+            case TouchControl::Down: held.owner = Owner::Down; break;
             case TouchControl::Jump: held.owner = Owner::Jump; break;
             case TouchControl::Sword: held.owner = Owner::Sword; break;
             case TouchControl::Fire: held.owner = Owner::Fire; break;
@@ -886,7 +837,6 @@ TouchStep TouchControls::Update(const TouchInput& input) {
                 held.owner = Owner::SpellCombo;
                 tapCombo(TouchCombo::Spell);   // E37
                 break;
-            case TouchControl::ExitDown: held.owner = Owner::ExitDown; break;
             case TouchControl::Pause:
             case TouchControl::Back: held.owner = Owner::Corner; break;
             case TouchControl::Count:
@@ -914,43 +864,22 @@ TouchStep TouchControls::Update(const TouchInput& input) {
     }   // E37
     // While a combo runs, its keys are the only ones of the buffer's it may see.
     const bool comboRuns = m_combo.combo != TouchCombo::None;
-    const TouchLayout::Box& dpad = m_layout[TouchControl::Dpad];
-    const glm::vec2 dpadSize = dpad.Size();
-    const float radius = 0.5f * std::min(dpadSize.x, dpadSize.y);
-    m_knob = dpad.Centre();
-    m_dpadHeld = false;
-    m_dpadPointing = false;
     const auto hold = [&step](TouchAction action) { step.held[static_cast<std::size_t>(action)] = true; };
     for (auto& entry : m_contacts) {
         Held& held = entry.second;
         switch (held.owner) {
             case Owner::None: break;
-            case Owner::Dpad: {
-                m_dpadHeld = true;
-                const glm::vec2 d = held.position - dpad.Centre();
-                const float dead = std::clamp(m_manifest.deadZone, 0.0f, kMaxDeadZone) * radius;
-                if (glm::dot(d, d) > dead * dead) {
-                    const float across = std::fabs(d.x);
-                    // Within 22.5 degrees of straight up or down: no side.
-                    const bool nearVertical = across < std::fabs(d.y) * kTan22;
-                    // Down and both of its diagonals (y is down), on a disc
-                    // that has them (E16's; E25's has its down button instead).
-                    const bool downward = m_manifest.downSector && d.y > 0.0f && d.y >= across * kTan22;
-                    m_dpadPointing = !nearVertical || downward;
-                    if (!comboRuns) {
-                        if (!nearVertical) {
-                            m_lastSide = d.x > 0.0f ? TouchAction::Right : TouchAction::Left;
-                            hold(m_lastSide);
-                        }
-                        if (downward) hold(TouchAction::Down);
-                    }
-                }
-                // The knob follows the thumb, never past the disc's rim.
-                const float knobRadius = 0.5f * std::min(m_manifest.knobSize.x, m_manifest.knobSize.y) *
-                                         std::clamp(m_manifest.scale, kMinScale, kMaxScale) * m_unit;
-                const float travel = std::max(0.0f, radius - knobRadius);
-                const float length = glm::length(d);
-                m_knob = dpad.Centre() + (length > travel && length > 0.0f ? d * (travel / length) : d);
+            case Owner::Left:
+            case Owner::Right:
+            case Owner::Down: {
+                // Held back under a combo (its presses would land in the combo buffer), and steering again the
+                // tick it ends, finger still down: unlike sword and fire, nothing swings again.
+                if (comboRuns) break;
+                const TouchAction action = held.owner == Owner::Left    ? TouchAction::Left
+                                           : held.owner == Owner::Right ? TouchAction::Right
+                                                                        : TouchAction::Down;
+                if (action != TouchAction::Down) m_lastSide = action;
+                hold(action);
                 break;
             }
             case Owner::Jump: hold(TouchAction::Jump); break;
@@ -962,8 +891,6 @@ TouchStep TouchControls::Update(const TouchInput& input) {
                 if (!held.heldBack) hold(held.owner == Owner::Sword ? TouchAction::Sword : TouchAction::Fire);
                 break;
             case Owner::Light: hold(TouchAction::Light); break;
-            // E25: down, as the keyboard's, for as long as the button shows.
-            case Owner::ExitDown: hold(TouchAction::Down); break;
             case Owner::SwordCombo:
             case Owner::SpellCombo: break;   // the tap started it; held, it does nothing
             case Owner::Corner: hold(TouchAction::Cancel); break;
@@ -1039,33 +966,23 @@ void TouchControls::AppendOverlay(std::vector<Eth::HudCmd>& out) const {
         const TouchLayout::Box& box = m_layout.boxes[index];
         const TouchControlSpec& spec = m_manifest.controls[index];
         switch (control) {
-            case TouchControl::Dpad: {
-                // The disc stays at rest; its arrows light with their direction.
-                draw(spec.image, box.min, box.Size(), idle, true);
-                draw(m_manifest.dpadLeft, box.min, box.Size(), held(TouchAction::Left) ? pressed : idle, false);
-                draw(m_manifest.dpadRight, box.min, box.Size(), held(TouchAction::Right) ? pressed : idle, false);
-                draw(m_manifest.dpadDown, box.min, box.Size(), held(TouchAction::Down) ? pressed : idle, false);
-                const glm::vec2 knob = m_manifest.knobSize * std::clamp(m_manifest.scale, kMinScale, kMaxScale) * m_unit;
-                // At rest (no thumb, or one in the dead zone or pointing up)
-                // only where the manifest keeps it there.
-                if (knob.x > 0.0f && knob.y > 0.0f && (m_manifest.knobAtRest || m_dpadPointing)) {
-                    draw(m_manifest.knobImage, m_knob - knob * 0.5f, knob, m_dpadHeld ? pressed : idle, false);
-                }
-                break;
-            }
+            case TouchControl::Left:
+            case TouchControl::Right:
+            case TouchControl::Down:
             case TouchControl::Jump:
             case TouchControl::Sword:
             case TouchControl::Fire:
             case TouchControl::Light:
-            case TouchControl::ExitDown:
             case TouchControl::Pause:
             case TouchControl::Back: {
-                const TouchAction action = control == TouchControl::Jump       ? TouchAction::Jump
-                                           : control == TouchControl::Sword    ? TouchAction::Sword
-                                           : control == TouchControl::Fire     ? TouchAction::Fire
-                                           : control == TouchControl::Light    ? TouchAction::Light
-                                           : control == TouchControl::ExitDown ? TouchAction::Down
-                                                                               : TouchAction::Cancel;
+                const TouchAction action = control == TouchControl::Left    ? TouchAction::Left
+                                           : control == TouchControl::Right ? TouchAction::Right
+                                           : control == TouchControl::Down  ? TouchAction::Down
+                                           : control == TouchControl::Jump  ? TouchAction::Jump
+                                           : control == TouchControl::Sword ? TouchAction::Sword
+                                           : control == TouchControl::Fire  ? TouchAction::Fire
+                                           : control == TouchControl::Light ? TouchAction::Light
+                                                                            : TouchAction::Cancel;
                 draw(spec.image, box.min, box.Size(), held(action) ? pressed : idle, true);
                 break;
             }
@@ -1115,7 +1032,7 @@ void TouchControls::AppendOverlay(std::vector<Eth::HudCmd>& out) const {
 
 // E28 ------------------------------------------------------------------------------------------------------
 // The player's tuning over the manifest: one transform of a copy of the base manifest, so that the
-// layout, the hit tests, the knob and the art all read one manifest, and the default tuning is that manifest
+// layout, the hit tests and the art all read one manifest, and the default tuning is that manifest
 // exactly.
 static_assert(kTuningControls == kTouchControlCount, "one tuning entry per TouchControl");   // E28
 static_assert(kTuningBackIndex == static_cast<int>(TouchControl::Back), "the tuning's back entry is TouchControl::Back");   // E28
@@ -1169,13 +1086,9 @@ TouchManifest TouchControls::WithTuning(const TouchManifest& base, const TouchTu
         }   // E28
         if (!Movable(control)) continue;   // E28
         // Moves are in the manifest's pixels, in the SCREEN's direction, and are not scaled by the size (offsets   // E28
-        // are inward from the anchor corner: right and bottom controls take the opposite sign). The down button   // E28
-        // sits over the direction control's gap, so it goes where that goes.   // E28
-        TouchMove moved = tuning.move[index];   // E28
-        if (control == TouchControl::ExitDown) {   // E28
-            moved.x += tuning.move[static_cast<std::size_t>(TouchControl::Dpad)].x;   // E28
-            moved.y += tuning.move[static_cast<std::size_t>(TouchControl::Dpad)].y;   // E28
-        }   // E28
+        // are inward from the anchor corner: right and bottom controls take the opposite sign). Each control,   // E28
+        // the left, right and down buttons included, moves by its own move alone.   // E28
+        const TouchMove moved = tuning.move[index];   // E28
         const bool left = spec.anchor == TouchAnchor::TopLeft || spec.anchor == TouchAnchor::BottomLeft;   // E28
         const bool top = spec.anchor == TouchAnchor::TopLeft || spec.anchor == TouchAnchor::TopRight;   // E28
         spec.offset.x += left ? moved.x : -moved.x;   // E28
@@ -1185,7 +1098,6 @@ TouchManifest TouchControls::WithTuning(const TouchManifest& base, const TouchTu
             spec.offset.y = std::max(spec.offset.y, kPauseTopClear / baseScale);   // E28
         }   // E28
     }   // E28
-    out.knobSize *= tuning.size;   // E28: the direction control's
     if (tuning.opacity != 1.0f) {   // E28
         out.idleAlpha = std::clamp(base.idleAlpha * tuning.opacity, 0.0f, 1.0f);   // E28
         // The held look is the only cue that a finger is on a button (there is no pressed art): never fainter   // E28
@@ -1238,11 +1150,8 @@ TouchMove TouchControls::MoveFor(const TouchManifest& base, const TouchTuning& t
 }   // E28
 
 TouchLayout::Box TouchControls::GrabBox(const TouchControl control, const TouchLayout::Box& box) {   // E28
-    if (control != TouchControl::Dpad) return box;   // E28
-    // The art's two 126-unit buttons sit centred 21.7 above the 400-unit box's centre (see DefaultManifest): the   // E28
-    // lower half of the disc is empty, and half of it hangs below the screen's edge.   // E28
-    const float height = box.Size().y;   // E28
-    return TouchLayout::Box{{box.min.x, box.min.y + 0.2883f * height}, {box.max.x, box.min.y + 0.6033f * height}};   // E28
+    (void)control;   // E28: every control is a plain button now, grabbed by its whole box
+    return box;   // E28
 }   // E28
 
 void TouchControls::SetTuning(const TouchTuning& tuning) {   // E28
@@ -1251,9 +1160,6 @@ void TouchControls::SetTuning(const TouchTuning& tuning) {   // E28
     m_manifest = WithTuning(m_base, m_tuning);   // E28
     if (!m_haveGeometry) return;   // E28
     m_layout = LayoutFor(m_manifest, m_geometry);   // E28
-    // The knob at rest sits at the direction control's centre, which just moved with it (a thumb on the control, in   // E28
-    // a level, drags the knob; the editor has none).   // E28
-    if (!m_dpadHeld) m_knob = m_layout[TouchControl::Dpad].Centre();   // E28
 }   // E28
 
 } // namespace Penumbra::Render
