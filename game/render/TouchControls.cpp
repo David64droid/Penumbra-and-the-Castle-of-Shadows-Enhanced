@@ -23,6 +23,12 @@ using Supersonic::Json::Value;
 constexpr const char* kControlIds[kTouchControlCount] = {"left",  "right",      "down",       "jump",  "sword", "fire",
                                                          "light", "swordCombo", "spellCombo", "pause", "back"};
 
+// The three direction buttons are the first controls, in this order: a finger that landed on one follows the
+// thumb over all three (Owner::Direction).
+constexpr int kDirectionFirst = static_cast<int>(TouchControl::Left);
+constexpr int kDirectionEnd = static_cast<int>(TouchControl::Down) + 1;
+static_assert(kDirectionFirst == 0 && kDirectionEnd == 3, "left, right and down come first");
+
 // What each action presses: what playerInput.as reads for player 0.
 constexpr Eth::KEY kActionKeys[kTouchActionCount] = {
     Eth::K_LEFT,    // getLeftButtonStatus, getPlayerXYAxis (playerInput.as:55, :135)
@@ -608,9 +614,8 @@ std::string TouchControls::resolved(const std::string& image) const {
 bool TouchControls::ownerVisible(Owner owner) const {
     switch (owner) {
         case Owner::None: return true;
-        case Owner::Left: return Visible(TouchControl::Left);
-        case Owner::Right: return Visible(TouchControl::Right);
-        case Owner::Down: return Visible(TouchControl::Down);
+        case Owner::Direction:
+            return Visible(TouchControl::Left) || Visible(TouchControl::Right) || Visible(TouchControl::Down);
         case Owner::Jump: return Visible(TouchControl::Jump);
         case Owner::Sword: return Visible(TouchControl::Sword);
         case Owner::Fire: return Visible(TouchControl::Fire);
@@ -623,10 +628,10 @@ bool TouchControls::ownerVisible(Owner owner) const {
     return false;
 }
 
-TouchControl TouchControls::hit(const glm::vec2& point) const {
+TouchControl TouchControls::hit(const glm::vec2& point, const int first, const int last) const {
     TouchControl best = TouchControl::Count;
     float bestDistance = std::numeric_limits<float>::max();
-    for (int i = 0; i < kTouchControlCount; ++i) {
+    for (int i = first; i < last; ++i) {
         const auto index = static_cast<std::size_t>(i);
         if (!m_visible[index]) continue;
         const TouchLayout::Box& box = m_layout.boxes[index];
@@ -819,9 +824,9 @@ TouchStep TouchControls::Update(const TouchInput& input) {
         switch (edit ? TouchControl::Count : hit(contact.position)) {   // E28
             // Each direction button is its own: a finger on one holds that key and no other, and a second
             // finger on the same button holds it once.
-            case TouchControl::Left: held.owner = Owner::Left; break;
-            case TouchControl::Right: held.owner = Owner::Right; break;
-            case TouchControl::Down: held.owner = Owner::Down; break;
+            case TouchControl::Left:
+            case TouchControl::Right:
+            case TouchControl::Down: held.owner = Owner::Direction; break;
             case TouchControl::Jump: held.owner = Owner::Jump; break;
             case TouchControl::Sword: held.owner = Owner::Sword; break;
             case TouchControl::Fire: held.owner = Owner::Fire; break;
@@ -869,15 +874,18 @@ TouchStep TouchControls::Update(const TouchInput& input) {
         Held& held = entry.second;
         switch (held.owner) {
             case Owner::None: break;
-            case Owner::Left:
-            case Owner::Right:
-            case Owner::Down: {
-                // Held back under a combo (its presses would land in the combo buffer), and steering again the
-                // tick it ends, finger still down: unlike sword and fire, nothing swings again.
+            case Owner::Direction: {
+                // A finger that landed on left, right or down follows the thumb over the three: whichever button
+                // it is on now is the key held, and none while it is between them or off them (it is still this
+                // finger's, so sliding back on presses again). That is how a combo's directions are made in one
+                // drag: down, then right, without lifting. Held back under a combo (its presses would land in
+                // the combo buffer), and steering again the tick it ends, finger still down.
                 if (comboRuns) break;
-                const TouchAction action = held.owner == Owner::Left    ? TouchAction::Left
-                                           : held.owner == Owner::Right ? TouchAction::Right
-                                                                        : TouchAction::Down;
+                const TouchControl under = hit(held.position, kDirectionFirst, kDirectionEnd);
+                if (under == TouchControl::Count) break;
+                const TouchAction action = under == TouchControl::Left    ? TouchAction::Left
+                                           : under == TouchControl::Right ? TouchAction::Right
+                                                                          : TouchAction::Down;
                 if (action != TouchAction::Down) m_lastSide = action;
                 hold(action);
                 break;

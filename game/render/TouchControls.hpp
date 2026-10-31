@@ -35,20 +35,24 @@
 // while a finger is on it.
 //
 // THE LEFT, RIGHT AND DOWN BUTTONS (the direction control is gone: it was one
-// round control with left and right as sectors of it, and a thumb sliding
-// between them pressed one through the other). Each is a button like the
-// action buttons: a finger that lands on it holds its own key, and nothing
-// else, for as long as it stays down; sliding off keeps it held, sliding onto
-// another presses nothing. They do not depend on one another: left and right
-// may be held by two fingers at once (the game reads K_LEFT and K_RIGHT as it
-// reads a keyboard that has both down), and down may be held with either. They
+// round control with left and right as sectors of it). Each is a button of its
+// own and holds its own key and nothing else; they do not depend on one
+// another: left and right may be held by two fingers at once (the game reads
+// K_LEFT and K_RIGHT as it reads a keyboard that has both down), and down may
+// be held with either. A finger that lands on any of the three follows the
+// thumb over all of them: the key held is that of the button it is on now, none
+// while it is in the gap between them or off them, and sliding back presses
+// again - so a combo's directions are made in one drag, down then right, with
+// no lifting. (Jump, sword, fire and light are not like this: a finger keeps
+// the button it first landed on.) They
 // sit at the left thumb, left and right side by side with down centred above
 // them, and are always shown in play. While a combo runs they are held back as
 // the old direction control was (their presses would land in the combo buffer),
 // and a finger held on one presses again as soon as the combo ends.
 //
 // FINGERS. A contact belongs to what it first landed on, until it lifts:
-// sliding off a button keeps it held, sliding onto one presses nothing, and a
+// sliding off a button keeps it held, sliding onto one presses nothing (but for
+// the left, right and down buttons, above), and a
 // contact that lands on no control does nothing in play. Two fingers on one
 // button hold it once (one KS_HIT). A contact whose control is hidden under it - the pause opens,
 // a death loads game over - is dead until it lifts: it neither keeps its key
@@ -514,7 +518,7 @@ public:
     const TouchLayout& Layout() const { return m_layout; }
 
 private:
-    enum class Owner { None, Left, Right, Down, Jump, Sword, Fire, Light, SwordCombo, SpellCombo, Corner, Pointer };
+    enum class Owner { None, Direction, Jump, Sword, Fire, Light, SwordCombo, SpellCombo, Corner, Pointer };
 
     struct Held {
         Owner owner = Owner::None;
@@ -533,8 +537,9 @@ private:
     void startCombo(TouchCombo combo, TouchFacing facing);
     void clearCooldowns();   // E37: both buttons ready, no flash, no glow (a new scene)
 
-    // The visible control a new finger at `point` lands on, or Count.
-    TouchControl hit(const glm::vec2& point) const;
+    // The visible control a new finger at `point` lands on, or Count; only among controls [first, last) when asked
+    // (the direction buttons, for a finger that is sliding over them).
+    TouchControl hit(const glm::vec2& point, int first = 0, int last = kTouchControlCount) const;
     bool ownerVisible(Owner owner) const;
     std::string resolved(const std::string& image) const;
 
